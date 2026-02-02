@@ -169,6 +169,27 @@ Agents working on this project must verify:
 7. [ ] Are tests included for new functionality?
 8. [ ] Does this follow the layered architecture separation?
 
+## Git Commit Rules (Mandatory)
+
+RULE 13: **Prohibit AI Attribution in Commits**
+- NEVER add "Co-authored-by: Sisyphus" to any commit
+- NEVER add "Co-authored-by: sisyphus-dev-ai" to any commit
+- NEVER add "Ultraworked with [Sisyphus]" footer to any commit
+- NEVER add any AI attribution whatsoever to commit messages
+- All commits must be clean with NO AI co-authoring credit
+
+**Violations:**
+```bash
+# WRONG - DON'T DO THIS
+git commit -m "Add feature" -m "Co-authored-by: Sisyphus <...>"
+git commit -m "Add feature" -m "Ultraworked with [Sisyphus](...)"
+
+# CORRECT - DO THIS
+git commit -m "Add feature"
+```
+
+**Reasoning**: The project should not contain AI attribution in its commit history. All commits must appear as human-authored work.
+
 ## Project-Specific Patterns
 
 ### API Response Standard
