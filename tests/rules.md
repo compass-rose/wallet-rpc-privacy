@@ -1,0 +1,1 @@
+If a wallet repeatedly queries the same balance in a short time window, it reveals behavioral patterns that enable user fingerprinting.
