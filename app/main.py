@@ -1,48 +1,32 @@
-"""
-Wallet / RPC Privacy Leakage Measurement System
-钱包与RPC隐私泄露测量系统
-
-Main FastAPI application entry point.
-"""
-
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from typing import List
+from app.models.schemas import NetworkTrafficSchema, PrivacyLeakEventSchema
+from app.core.detector import PrivacyDetector
 
 app = FastAPI(
     title="Wallet / RPC Privacy Leakage Measurement",
-    description="A system to measure and quantify privacy leakage in wallet-RPC communications",
+    description="System to quantify privacy leakage in wallet-RPC communications",
     version="0.1.0"
 )
 
+detector = PrivacyDetector()
 
 @app.get("/")
 async def root() -> JSONResponse:
-    """
-    Root endpoint - Hello World
+    return JSONResponse({"status": "healthy", "message": "Welcome"})
 
-    Returns:
-        JSONResponse: Welcome message
+# --- 核心任务 3.2：隐私检测分析接口 ---
+@app.post("/api/v1/analyze", response_model=List[PrivacyLeakEventSchema])
+async def analyze_rpc_traffic(traffic: NetworkTrafficSchema):
     """
-    return JSONResponse({
-        "message": "Welcome to Wallet / RPC Privacy Leakage Measurement System",
-        "version": "0.1.0",
-        "status": "healthy"
-    })
-
+    接收来自 3.1 模块的流量数据，输出符合 9.1 Schema 的隐私泄露事件。
+    """
+    return detector.analyze_traffic(traffic)
 
 @app.get("/health")
 async def health_check() -> JSONResponse:
-    """
-    Health check endpoint
-
-    Returns:
-        JSONResponse: Health status
-    """
-    return JSONResponse({
-        "status": "healthy",
-        "service": "wallet-rpc-privacy"
-    })
-
+    return JSONResponse({"status": "healthy"})
 
 if __name__ == "__main__":
     import uvicorn
