@@ -1,34 +1,43 @@
-```markdown
-# Technical Specification
+# Technical Specification (Milestone 2)
 
-## Scoring Methodology
-To fulfill the requirement of "Precision > 90%", the engine employs a dynamic scoring model across 10 rules:
-* **Identity Leaks (DR-ID-1 to 3)**: Uses Web3.py for EIP-55 checksum validation. Mnemonic detection uses fixed patterns for BIP-39 wordlists.
-* **Cryptographic Secrets (DR-ID-2)**: Uses Shannon Entropy $H(X) = -\sum p(x_i) \log_2 p(x_i)$. Strings with entropy > 3.8 are flagged as high-risk.
-* **Asset Tracking (DR-AS-1 to 2)**: Targets specific RPC methods like `eth_getBalance` and `eth_call` with ERC-20 selector `70a08231`.
-* **Metadata Analysis (DR-LO/BE)**: Extracts wallet brands from User-Agent and tracks interaction frequency via `eth_getTransactionCount`.
+## English Version
 
-## Data Schema Alignment
-The output strictly matches the `PrivacyLeakEvent` entity defined in Section 9 of the Initial Specification:
-* `session_id`: Unique identifier from the traffic capture module.
-* `confidence`: Float [0.0 - 1.0].
-* `address_hash`: SHA-256 hashed and truncated (First 8 chars) to comply with PR-2.
-* `rule_id`: Standardized identifiers (e.g., DR-ID-1) for tracking.
+### 1. M2 Scoring Methodology
+The engine moves beyond simple binary detection by implementing a weighted risk matrix. The **Severity Score** accounts for the correlation between different privacy dimensions:
+
+$$Score = \min\left( \sum (Weight_i \times Confidence_i) \times (1 + (N_{types}-1) \times 0.4) \times 8, 100 \right)$$
+
+* **Weights**: Identity (0.45), Location (0.30), Asset (0.15), Behavior (0.10).
+* **Correlation Multiplier**: A penalty coefficient applied when multiple leak types appear in the same session.
+
+### 2. Recursive Parsing Logic
+The engine implements a recursive search space to handle the `output.json` structure from the 3.1 module:
+* **Flattening**: It extracts text from `request.headers`, `request.content`, and `response.content`.
+* **Sanitization**: It filters out non-dictionary artifacts (metadata integers) to prevent processing errors.
+
+### 3. Compliance (PR-2)
+In accordance with PR-2 specifications, sensitive identifiers are anonymized:
+`address_hash = SHA256(lowercase_address).hexdigest()[:8]`
 
 ---
 
-# 技术规格说明
+# 技术规格说明 (里程碑 2)
 
-## 评分机制
-为满足“准确率 > 90%”的要求，引擎在 10 条规则中采用了动态评分模型：
-* **身份泄露 (DR-ID-1 至 3)**: 使用 Web3.py 进行 EIP-55 校验。助记词检测采用 BIP-39 词表的固定模式匹配。
-* **加密密钥 (DR-ID-2)**: 采用香农信息熵公式 $H(X) = -\sum p(x_i) \log_2 p(x_i)$。熵值大于 3.8 的字符串被标记为高风险。
-* **资产追踪 (DR-AS-1 至 2)**: 针对特定 RPC 方法如 `eth_getBalance` 以及带有 ERC-20 选择器 `70a08231` 的 `eth_call`。
-* **元数据分析 (DR-LO/BE)**: 从 User-Agent 中提取钱包品牌，并通过 `eth_getTransactionCount` 追踪交互频率。
+## 中文版
 
-## 数据模型对齐
-输出结果严格匹配初始规格说明书第 9 节中定义的 `PrivacyLeakEvent` 实体：
-* `session_id`: 来自流量抓取模块的唯一标识符。
-* `confidence`: 浮点数 [0.0 - 1.0]。
-* `address_hash`: 经过 SHA-256 哈希并截断（前 8 位）处理，以符合 PR-2 隐私规范。
-* `rule_id`: 标准化标识符（如 DR-ID-1）用于追踪记录。
+### 1. M2 评分方法论
+引擎超越了简单的二元检测，实现了加权风险矩阵。**严重性得分**考虑了不同隐私维度之间的关联性：
+
+$$Score = \min\left( \sum (Weight_i \times Confidence_i) \times (1 + (N_{types}-1) \times 0.4) \times 8, 100 \right)$$
+
+* **权重**：身份 (0.45), 位置 (0.30), 资产 (0.15), 行为 (0.10)。
+* **关联乘数**：当同一会话中出现多种泄露类型时应用的惩罚系数。
+
+### 2. 递归解析逻辑
+引擎实现了递归搜索空间，以处理来自 3.1 模块的 `output.json` 结构：
+* **扁平化**：提取 `request.headers`、`request.content` 和 `response.content` 中的文本。
+* **数据清洗**：过滤掉非字典伪影（元数据整数），以防止处理错误。
+
+### 3. 合规性 (PR-2)
+根据 PR-2 规范，敏感标识符将被匿名化处理：
+`address_hash = SHA256(lowercase_address).hexdigest()[:8]`
