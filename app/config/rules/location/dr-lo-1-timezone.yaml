@@ -1,0 +1,22 @@
+rule_id: "DR-LO-1"
+name: "Timezone Inference"
+category: "location"
+priority: "LOW"
+enabled: true
+description: "Infer user timezone from request timing patterns (circadian patterns)"
+version: 1
+
+conditions:
+  - type: "temporal_pattern"
+    check: "circadian_rhythm"
+    min_samples: 50
+    consistency_threshold: 0.7
+    hours: [8, 22]  # Active hours in local timezone
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "LOCATION"
+    confidence_base: 0.6
+
+  - type: "calculate_score"
+    metrics: ["temporal"]

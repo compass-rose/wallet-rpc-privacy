@@ -1,61 +1,103 @@
-import json
-import os
-from datetime import datetime
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from app.core.detector import PrivacyDetector
+"""
+FastAPI application entry point
+"""
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-app = FastAPI(title="Web3 Privacy Analytics Engine M2")
-detector = PrivacyDetector()
+# Import routers
+from app.api.v1 import sessions, traffic, leaks, assessments, analytics, rules
+from app.models.base import Base
+from app.core.database import engine
+from app.core.config import get_settings
 
-@app.post("/api/v1/upload")
-async def upload_traffic_file(file: UploadFile = File(...)):
-    # 我还记着你说的话
-    content = await file.read()
-    text = content.decode('utf-8').strip()
-    
-    # 适配 LDJSON 格式（你提供的样例是每行一个 JSON）
-    raw_list = []
-    lines = text.splitlines()
-    for line in lines:
-        line = line.strip()
-        if not line: continue
-        try:
-            # 尝试解析每一行
-            obj = json.loads(line)
-            raw_list.append(obj)
-        except json.JSONDecodeError:
-            continue
+settings = get_settings()
 
-    # 过滤非字典干扰项
-    flows = [f for f in raw_list if isinstance(f, dict)]
-    
-    print(f"\n[DEBUG] Total Lines in File: {len(lines)}")
-    print(f"[DEBUG] Valid JSON Flows: {len(flows)}")
+# Create FastAPI app
+app = FastAPI(
+    title="Wallet / RPC Privacy Leakage Measurement",
+    description="A system to measure and quantify privacy leakage in wallet-RPC communications",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
-    all_events = []
-    affected_sessions = set()
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins.split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    for flow in flows:
-        events = detector.analyze_flow(flow)
-        if events:
-            all_events.extend(events)
-            # 使用你的 flow_id 作为 session_id
-            affected_sessions.add(flow.get("flow_id", "unknown"))
 
-    print(f"[DEBUG] Leaks Detected: {len(all_events)}")
+# Startup event to create tables
+@app.on_event("startup")
+async def startup_event():
+    """Create database tables on startup"""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-    # M2 评分
-    score, level = detector.calculate_risk_severity(all_events)
-    
-    # 保存报告
-    report_filename = f"full_report_{datetime.now().strftime('%H%M%S')}.json"
-    serializable = [e.model_dump() for e in all_events]
-    with open(report_filename, "w", encoding="utf-8") as f:
-        json.dump(serializable, f, indent=4, ensure_ascii=False)
 
-    return {
-        "m2_assessment": {"score": score, "risk_level": level},
-        "stats": {"processed": len(flows), "leaks": len(all_events)},
-        "report_file": report_filename,
-        "sample": all_events[:3]
-    }
+# Include routers
+app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
+app.include_router(traffic.router, prefix="/api/v1", tags=["traffic"])
+app.include_router(leaks.router, prefix="/api/v1", tags=["leaks"])
+app.include_router(assessments.router, prefix="/api/v1", tags=["assessments"])
+app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
+app.include_router(rules.router, prefix="/api/v1", tags=["rules"])
+
+
+# Root endpoint
+@app.get("/")
+async def root() -> JSONResponse:
+    """Root endpoint"""
+    return JSONResponse({
+        "message": "Wallet / RPC Privacy Leakage Measurement System",
+        "version": "1.0.0",
+        "status": "healthy",
+        "docs": "/docs",
+        "redoc": "/redoc"
+    })
+
+
+# Health check endpoint
+@app.get("/health")
+async def health_check() -> JSONResponse:
+    """Health check endpoint"""
+    return JSONResponse({
+        "status": "healthy",
+        "service": "wallet-privacy-backend"
+    })
+
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler"""
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "An internal error occurred"
+            },
+            "metadata": {
+                "path": request.url.path,
+                "method": request.method
+            }
+        }
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level=settings.log_level.lower()
+    )

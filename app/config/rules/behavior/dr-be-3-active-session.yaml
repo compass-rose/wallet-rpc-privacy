@@ -1,0 +1,25 @@
+rule_id: "DR-BE-3"
+name: "Active Session Inference"
+category: "behavior"
+priority: "LOW"
+enabled: true
+description: "Detect active vs idle periods based on request frequency thresholds"
+version: 1
+
+conditions:
+  - type: "temporal_pattern"
+    check: "high_activity_period"
+    min_requests_per_minute: 10
+    duration_minutes: 5
+
+  - type: "method_pattern"
+    methods: ["eth_blockNumber", "eth_getBalance"]
+    frequency_pattern: "polling"
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "BEHAVIOR"
+    confidence_base: 0.6
+
+  - type: "calculate_score"
+    metrics: ["temporal"]
