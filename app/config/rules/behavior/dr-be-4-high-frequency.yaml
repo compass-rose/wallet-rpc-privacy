@@ -1,0 +1,21 @@
+rule_id: "DR-BE-4"
+name: "High Frequency Activity"
+category: "behavior"
+priority: "MEDIUM"
+enabled: true
+description: "Detect unusually high request frequency patterns"
+version: 1
+
+conditions:
+  - type: "frequency_pattern"
+    min_requests_per_second: 2
+    duration_seconds: 30
+    methods: ["eth_getBalance", "eth_call"]
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "BEHAVIOR"
+    confidence_base: 0.7
+
+  - type: "calculate_score"
+    metrics: ["temporal", "uniqueness"]

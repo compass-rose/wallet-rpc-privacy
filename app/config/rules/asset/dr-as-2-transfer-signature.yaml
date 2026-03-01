@@ -1,0 +1,25 @@
+rule_id: "DR-AS-2"
+name: "Transfer Signature Detection"
+category: "asset"
+priority: "HIGH"
+enabled: true
+description: "Identify transfer patterns from nonce sequences and gas price patterns"
+version: 1
+
+conditions:
+  - type: "sequence_pattern"
+    methods: ["eth_sendTransaction"]
+    pattern: "sequential_nonce_increments"
+    min_increment_count: 3
+
+  - type: "behavior_pattern"
+    check: "consistent_gas_price_range"
+    max_variance_percent: 20
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "ASSET"
+    confidence_base: 0.9
+
+  - type: "calculate_score"
+    metrics: ["temporal"]

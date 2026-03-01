@@ -1,0 +1,26 @@
+"""
+Base models for database tables
+"""
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, DateTime, func
+from sqlalchemy.ext.declarative import declarative_base
+
+
+Base = declarative_base()
+
+
+class TimestampMixin:
+    """
+    Mixin class for adding created_at and updated_at timestamps
+    """
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )

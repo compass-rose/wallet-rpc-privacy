@@ -1,0 +1,24 @@
+rule_id: "DR-ID-2"
+name: "Address Correlation"
+category: "identity"
+priority: "HIGH"
+enabled: true
+description: "Identify multiple addresses used in same session with correlated behavior"
+version: 1
+
+conditions:
+  - type: "address_pattern"
+    check: "multiple_addresses_same_session"
+    min_addresses: 2
+
+  - type: "behavior_pattern"
+    check: "similar_method_usage"
+    min_similarity: 0.7
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "IDENTITY"
+    confidence_base: 0.85
+
+  - type: "calculate_score"
+    metrics: ["correlation"]

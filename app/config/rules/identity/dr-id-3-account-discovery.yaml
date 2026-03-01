@@ -1,0 +1,21 @@
+rule_id: "DR-ID-3"
+name: "Account Discovery"
+category: "identity"
+priority: "MEDIUM"
+enabled: true
+description: "Detect patterns of enumerating account indices (checking balances for indices 0, 1, 2...)"
+version: 1
+
+conditions:
+  - type: "sequence_pattern"
+    methods: ["eth_getBalance", "eth_getTransactionCount"]
+    pattern: "sequential_address_enumeration"
+    min_sequence_length: 3
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "IDENTITY"
+    confidence_base: 0.8
+
+  - type: "calculate_score"
+    metrics: ["correlation"]

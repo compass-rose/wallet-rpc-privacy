@@ -1,0 +1,24 @@
+rule_id: "DR-AS-1"
+name: "Asset Holding Inference"
+category: "asset"
+priority: "HIGH"
+enabled: true
+description: "Infer asset holdings from repeated asset metadata queries"
+version: 1
+
+conditions:
+  - type: "method_pattern"
+    methods: ["erc20_balanceOf", "eth_getBalance"]
+    min_frequency: 10
+
+  - type: "address_pattern"
+    check: "single_address_high_frequency"
+    threshold: 5
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "ASSET"
+    confidence_base: 0.8
+
+  - type: "calculate_score"
+    metrics: ["entropy"]

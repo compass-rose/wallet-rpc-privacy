@@ -1,0 +1,25 @@
+rule_id: "DR-ID-1"
+name: "Address Reuse Detection"
+category: "identity"
+priority: "MEDIUM"
+enabled: true
+description: "Detect frequent queries to same address across multiple sessions"
+version: 1
+
+conditions:
+  - type: "address_pattern"
+    check: "same_address_across_sessions"
+    threshold: 3
+    time_window_hours: 24
+
+  - type: "method_pattern"
+    methods: ["eth_getBalance", "eth_getTransactionCount"]
+    min_frequency: 5
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "IDENTITY"
+    confidence_base: 0.7
+
+  - type: "calculate_score"
+    metrics: ["uniqueness", "correlation"]

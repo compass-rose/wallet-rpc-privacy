@@ -1,0 +1,22 @@
+rule_id: "DR-BE-1"
+name: "DApp Usage Pattern"
+category: "behavior"
+priority: "MEDIUM"
+enabled: true
+description: "Detect characteristic sequences of calls specific to DApps (e.g., Uniswap swap sequence)"
+version: 1
+
+conditions:
+  - type: "sequence_pattern"
+    methods: ["eth_estimateGas", "eth_call", "eth_sendTransaction"]
+    sequence: ["eth_estimateGas", "eth_call", "eth_estimateGas", "eth_sendTransaction"]
+    max_interval_seconds: 30
+    min_sequences: 3
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "BEHAVIOR"
+    confidence_base: 0.75
+
+  - type: "calculate_score"
+    metrics: ["entropy", "temporal"]

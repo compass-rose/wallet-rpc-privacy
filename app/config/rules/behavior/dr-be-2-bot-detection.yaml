@@ -1,0 +1,26 @@
+rule_id: "DR-BE-2"
+name: "Bot Behavior Detection"
+category: "behavior"
+priority: "HIGH"
+enabled: true
+description: "Identify timing patterns indicative of automated bots (fixed intervals, burst patterns)"
+version: 1
+
+conditions:
+  - type: "temporal_pattern"
+    check: "fixed_request_intervals"
+    max_variance_ms: 100
+    min_requests: 10
+
+  - type: "behavior_pattern"
+    check: "burst_pattern"
+    min_requests_per_burst: 5
+    max_burst_interval_ms: 200
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "BEHAVIOR"
+    confidence_base: 0.85
+
+  - type: "calculate_score"
+    metrics: ["temporal", "entropy"]

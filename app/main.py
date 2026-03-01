@@ -1,49 +1,103 @@
 """
-Wallet / RPC Privacy Leakage Measurement System
-钱包与RPC隐私泄露测量系统
-
-Main FastAPI application entry point.
+FastAPI application entry point
 """
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+# Import routers
+from app.api.v1 import sessions, traffic, leaks, assessments, analytics, rules
+from app.models.base import Base
+from app.core.database import engine
+from app.core.config import get_settings
+
+settings = get_settings()
+
+# Create FastAPI app
 app = FastAPI(
     title="Wallet / RPC Privacy Leakage Measurement",
     description="A system to measure and quantify privacy leakage in wallet-RPC communications",
-    version="0.1.0"
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins.split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
+# Startup event to create tables
+@app.on_event("startup")
+async def startup_event():
+    """Create database tables on startup"""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+# Include routers
+app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
+app.include_router(traffic.router, prefix="/api/v1", tags=["traffic"])
+app.include_router(leaks.router, prefix="/api/v1", tags=["leaks"])
+app.include_router(assessments.router, prefix="/api/v1", tags=["assessments"])
+app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
+app.include_router(rules.router, prefix="/api/v1", tags=["rules"])
+
+
+# Root endpoint
 @app.get("/")
 async def root() -> JSONResponse:
-    """
-    Root endpoint - Hello World
-
-    Returns:
-        JSONResponse: Welcome message
-    """
+    """Root endpoint"""
     return JSONResponse({
-        "message": "Welcome to Wallet / RPC Privacy Leakage Measurement System",
-        "version": "0.1.0",
-        "status": "healthy"
+        "message": "Wallet / RPC Privacy Leakage Measurement System",
+        "version": "1.0.0",
+        "status": "healthy",
+        "docs": "/docs",
+        "redoc": "/redoc"
     })
 
 
+# Health check endpoint
 @app.get("/health")
 async def health_check() -> JSONResponse:
-    """
-    Health check endpoint
-
-    Returns:
-        JSONResponse: Health status
-    """
+    """Health check endpoint"""
     return JSONResponse({
         "status": "healthy",
-        "service": "wallet-rpc-privacy"
+        "service": "wallet-privacy-backend"
     })
+
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler"""
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "An internal error occurred"
+            },
+            "metadata": {
+                "path": request.url.path,
+                "method": request.method
+            }
+        }
+    )
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level=settings.log_level.lower()
+    )

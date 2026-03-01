@@ -70,4 +70,3 @@ The relationship with threat model: Temporal and frequency-based metadata may re
 Experiment 3: Scenario-Based Comparison (Optional Extension)
 Goal: To compare privacy leakage across different usage scenarios, such as single versus multiple addresses or sessions.
 The relationship with threat model: Variations in observable metadata may affect linkability and entropy.
-

@@ -1,0 +1,22 @@
+rule_id: "DR-ID-4"
+name: "Identity Linkability"
+category: "identity"
+priority: "HIGH"
+enabled: true
+description: "Detect patterns that enable linking user identity across sessions"
+version: 1
+
+conditions:
+  - type: "address_pattern"
+    check: "same_methods_same_addresses"
+    min_sessions: 2
+    min_common_addresses: 1
+    min_common_methods: 3
+
+actions:
+  - type: "create_leak_event"
+    leak_type: "IDENTITY"
+    confidence_base: 0.9
+
+  - type: "calculate_score"
+    metrics: ["uniqueness", "correlation"]
