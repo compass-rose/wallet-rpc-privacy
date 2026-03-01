@@ -1,0 +1,6 @@
+[
+  {"method": "eth_getBalance", "time": 1},
+  {"method": "eth_getBalance", "time": 2},
+  {"method": "eth_getBalance", "time": 3},
+  {"method": "eth_sendTransaction", "time": 10}
+]

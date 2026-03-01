@@ -1,0 +1,1 @@
+Minimal simulator for detecting behavioral privacy leakage in wallet RPC traffic.
