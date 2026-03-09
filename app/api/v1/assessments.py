@@ -5,13 +5,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.api.deps import get_db
-from app.models import NetworkTraffic
+from app.models import NetworkTraffic, Session
 from app.services.risk_service import RiskService
 from app.services.risk_service import RiskService
+
+from app.services.risk import compare_with_baselines, generate_industry_comparison
+from app.services.risk import simulate_distinguishing_attack
+from app.services.risk.adversarial import evaluate_defense_effectiveness
+from app.services.risk.attack_simulation import extract_session_features
 
 from app.services.detection_service import DetectionService, RuleLoader
 from uuid import uuid4
 from datetime import datetime, timezone
+from typing import Dict, Any
 
 router = APIRouter()
 
@@ -154,7 +160,7 @@ async def list_assessments(
 
     # Filter by risk level if specified
     if risk_level:
-        from app.models import RiskLevelEnum  # Note: using RiskLevel from models
+        from app.models.risk import RiskLevel
         assessments = [a for a in assessments if a.risk_level.value == risk_level]
 
     return {
@@ -175,6 +181,168 @@ async def list_assessments(
             "skip": skip,
             "limit": limit
         },
+        "metadata": {
+            "request_id": str(uuid4()),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    }
+
+
+@router.post("/sessions/{session_id}/baseline-compare")
+async def baseline_comparison(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    比与会话指标与随机和理想基线
+
+    Args:
+        session_id: 会话UUID
+        db: 数据库会话
+
+    Returns:
+        基线比较结果
+    """
+    result = await db.execute(
+        select(NetworkTraffic).where(NetworkTraffic.session_id == session_id)
+    )
+    traffic_records = list(result.scalars().all())
+
+    if not traffic_records:
+        return {
+            "success": True,
+            "data": {"message": "未找到流量记录用于基线比较"},
+            "metadata": {
+                "request_id": str(uuid4()),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        }
+
+    risk_service = RiskService()
+    assessment = await risk_service.get_latest_assessment(session_id, db)
+
+    if not assessment:
+        return {
+            "success": False,
+            "error": "未找到该会话的风险评估，请先运行评估",
+            "metadata": {
+                "request_id": str(uuid4()),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        }
+
+    actual_metrics = {
+        "entropy": assessment.entropy_score,
+        "uniqueness": assessment.uniqueness_score,
+        "correlation": assessment.correlation_score,
+        "temporal": assessment.temporal_score
+    }
+
+    baseline_result = compare_with_baselines(actual_metrics, len(traffic_records))
+    industry_result = generate_industry_comparison(actual_metrics)
+
+    return {
+        "success": True,
+        "data": {
+            "baseline_comparison": baseline_result,
+            "industry_comparison": industry_result
+        },
+        "metadata": {
+            "request_id": str(uuid4()),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    }
+
+
+@router.post("/sessions/{session_id}/simulate-attack")
+async def simulate_attack(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    运行基于ML的会话区分度攻击模拟
+
+    Args:
+        session_id: 会话UUID
+        db: 数据库会话
+
+    Returns:
+        攻击模拟结果
+    """
+    result = await db.execute(
+        select(NetworkTraffic)
+    )
+    all_traffic = result.scalars().all()
+
+    if len(all_traffic) < 2:
+        return {
+            "success": False,
+            "error": "需要至少2个会话进行攻击模拟",
+            "metadata": {
+                "request_id": str(uuid4()),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        }
+
+    traffic_by_session: Dict[str, Any] = {}
+    for record in all_traffic:
+        if record.session_id not in traffic_by_session:
+            traffic_by_session[record.session_id] = []
+        traffic_by_session[record.session_id].append(record)
+
+    attack_result = simulate_distinguishing_attack(traffic_by_session)
+
+    return {
+        "success": True,
+        "data": attack_result,
+        "metadata": {
+            "request_id": str(uuid4()),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    }
+
+
+@router.post("/sessions/{session_id}/adversarial-test")
+async def adversarial_testing(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    评估隐私防御策略的有效性
+
+    Args:
+        session_id: 会话UUID
+        db: 数据库会话
+
+    Returns:
+        防御有效性评估结果
+    """
+    result = await db.execute(
+        select(NetworkTraffic)
+    )
+    all_traffic = result.scalars().all()
+
+    if len(all_traffic) < 2:
+        return {
+            "success": False,
+            "error": "需要至少2个会话进行对抗性测试",
+            "metadata": {
+                "request_id": str(uuid4()),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        }
+
+    traffic_by_session: Dict[str, Any] = {}
+    for record in all_traffic:
+        if record.session_id not in traffic_by_session:
+            traffic_by_session[record.session_id] = []
+        traffic_by_session[record.session_id].append(record)
+
+    defense_result = evaluate_defense_effectiveness(traffic_by_session)
+
+    return {
+        "success": True,
+        "data": defense_result,
         "metadata": {
             "request_id": str(uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat()

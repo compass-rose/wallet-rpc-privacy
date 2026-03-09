@@ -107,7 +107,7 @@ sleep 3
 # 检查后端启动
 if ! curl -s http://localhost:8000/health > /dev/null; then
     echo -e "${RED}❌ 后端服务启动失败！${NC}"
-    kill $BACKEND_PID
+    kill $BACKEND_PID 2>/dev/null || true
     exit 1
 fi
 echo -e "${GREEN}✓ 后端服务运行在 http://localhost:8000${NC}"
@@ -118,6 +118,11 @@ echo -e "${BLUE}🔄 启动 RPC 代理服务 (端口 8545)...${NC}"
 python rpc_proxy.py --port 8545 --real-rpc "$REAL_RPC_URL" &
 PROXY_PID=$!
 sleep 2
+
+# 检查RPC代理启动
+if ! curl -s http://localhost:8545/health > /dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ RPC代理服务可能未启动，但这不影响流量捕获${NC}"
+fi
 
 # 输出使用说明
 echo ""
@@ -165,13 +170,67 @@ echo ""
 echo -e "${YELLOW}按 Ctrl+C 停止所有服务${NC}"
 echo ""
 
-# 清理函数
+# 清理函数 - 停止所有服务
 cleanup() {
     echo ""
-    echo -e "${YELLOW}正在停止服务...${NC}"
-    kill $BACKEND_PID 2>/dev/null || true
-    kill $PROXY_PID 2>/dev/null || true
-    echo -e "${GREEN}✓ 服务已停止${NC}"
+    echo -e "${YELLOW}正在停止所有服务...${NC}"
+
+    # 1. 完成所有活跃会话（保存数据并更新状态）
+    echo ""
+    echo -e "${BLUE}🔚 完成所有活跃会话...${NC}"
+    COMPLETION_RESPONSE=$(curl -s -X POST "http://localhost:8000/api/v1/sessions/complete-all")
+    if echo "$COMPLETION_RESPONSE" | grep -q '"success": true'; then
+        COUNT=$(echo "$COMPLETION_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['completed_count'])" 2>/dev/null || echo "0")
+        echo -e "${GREEN}✓ 已完成 ${COUNT} 个活跃会话${NC}"
+    else
+        echo -e "${YELLOW}⚠ 完成会话失败或无活跃会话${NC}"
+    fi
+
+    # 2. 优雅停止后端服务
+    echo ""
+    echo -e "${BLUE}🛑 停止后端服务...${NC}"
+    if kill -TERM $BACKEND_PID 2>/dev/null; then
+        echo -e "${GREEN}✓ 后端服务正常停止${NC}"
+        sleep 2
+    fi
+
+    # 强制停止后端（如果优雅停止超时）
+    if pgrep -f "uvicorn app.main:app" > /dev/null 2>&1; then
+        echo -e "${YELLOW}⚠ 后端未响应，强制停止...${NC}"
+        kill -9 $BACKEND_PID 2>/dev/null || true
+        sleep 1
+    fi
+
+    # 3. 停止RPC代理
+    echo ""
+    echo -e "${BLUE}🛑 停止RPC代理...${NC}"
+    if kill -TERM $PROXY_PID 2>/dev/null; then
+        echo -e "${GREEN}✓ RPC代理正常停止${NC}"
+    else
+        kill -9 $PROXY_PID 2>/dev/null || true
+    fi
+
+    # 4. 确保所有相关进程完全停止
+    echo ""
+    echo -e "${BLUE}🧹 清理所有相关进程...${NC}"
+    pkill -9 -f "uvicorn app.main:app" 2>/dev/null || true
+    pkill -9 -f "rpc_proxy" 2>/dev/null || true
+    sleep 1
+
+    if pgrep -f "uvicorn" > /dev/null 2>&1 || pgrep -f "rpc_proxy" > /dev/null 2>&1; then
+        echo -e "${YELLOW}⚠ 发现残留进程，强制清理...${NC}"
+        pkill -9 -v -f "uvicorn" 2>/dev/null || true
+        pkill -9 -v -f "rpc_proxy" 2>/dev/null || true
+        sleep 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}║         ✅ 所有服务已安全停止，数据已保存              ║${NC}"
+    echo -e "${GREEN}╚═════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    exit 0
 }
 
 # 捕获中断信号

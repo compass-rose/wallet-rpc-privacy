@@ -4,8 +4,10 @@ Mitmproxy traffic provider - Reserved for real data capture
 This provider interfaces with mitmproxy for actual TLS interception
 and network traffic capture from real wallet applications.
 """
-from app.services.traffic.base import TrafficProvider, CaptureConfig, CaptureStatus, TrafficRecord
+import asyncio
 from typing import AsyncIterator
+
+from app.services.traffic.base import TrafficProvider, CaptureConfig, CaptureStatus, TrafficRecord
 
 
 class MitmTrafficProvider(TrafficProvider):
@@ -22,12 +24,8 @@ class MitmTrafficProvider(TrafficProvider):
     """
 
     def __init__(self):
-        # TODO: Initialize mitmproxy components
-        raise NotImplementedError(
-            "Mitm provider requires TLS certificate setup. "
-            "Use Mock provider for development. "
-            "See user manual for production setup instructions."
-        )
+        self.active_sessions: dict[str, CaptureConfig] = {}
+        self.captured_packets: dict[str, list[TrafficRecord]] = {}
 
     async def start_capture(self, session_id: str, config: CaptureConfig) -> CaptureStatus:
         """

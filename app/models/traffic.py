@@ -23,6 +23,7 @@ class NetworkTraffic(Base, TimestampMixin):
     response_status = Column(Integer, nullable=True)
     response_size_bytes = Column(BigInteger, nullable=True)
     ip_address_hash = Column(String(64), nullable=True)
+    address_hash = Column(String(64), nullable=True)  # Hashed wallet address
     user_agent = Column(String(512), nullable=True)
 
     session = relationship("Session", backref="traffic")

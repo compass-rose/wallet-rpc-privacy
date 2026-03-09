@@ -1,6 +1,8 @@
 """
 Traffic capture service - high-level interface
 """
+import hashlib
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.traffic.base import TrafficProvider, CaptureConfig, TrafficRecord
 from app.services.traffic.factory import get_traffic_provider
@@ -65,6 +67,17 @@ class TrafficService:
         Returns:
             Created NetworkTraffic model
         """
+        # Extract and hash wallet address from request_body
+        address_hash = None
+        if record.request_body and record.rpc_method:
+            try:
+                body = json.loads(record.request_body)
+                params = body.get("params", [])
+                if params and isinstance(params[0], str) and params[0].startswith("0x"):
+                    address_hash = hashlib.sha256(params[0].encode()).hexdigest()
+            except (json.JSONDecodeError, IndexError, KeyError):
+                pass
+
         traffic = NetworkTraffic(
             session_id=session_id,
             method=record.method,
@@ -76,6 +89,7 @@ class TrafficService:
             response_status=record.response_status,
             response_size_bytes=record.response_size_bytes,
             ip_address_hash=hash_ip(record.ip_address) if record.ip_address else None,
+            address_hash=address_hash,
             user_agent=record.user_agent
         )
 

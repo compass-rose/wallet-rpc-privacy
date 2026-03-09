@@ -226,18 +226,32 @@ async def record_single_traffic(
 ):
     """
     Record a single traffic record (for RPC proxy)
-    
+
     Args:
         session_id: Session UUID
         record: Traffic record data (method, endpoint, rpc_method, etc.)
         db: Database session
-    
+
     Returns:
         Success status
     """
     from datetime import datetime, timezone
     from uuid import uuid4
-    
+    import hashlib
+    import json
+
+    # Extract and hash wallet address from request_body
+    address_hash = None
+    request_body = record.get("request_body")
+    rpc_method = record.get("rpc_method")
+    if request_body and rpc_method:
+        try:
+            params = json.loads(request_body) if isinstance(request_body, str) else request_body
+            if isinstance(params, list) and len(params) > 0 and isinstance(params[0], str) and params[0].startswith("0x"):
+                address_hash = hashlib.sha256(params[0].encode()).hexdigest()
+        except (json.JSONDecodeError, IndexError, KeyError, TypeError):
+            pass
+
     traffic = NetworkTraffic(
         id=str(uuid4()),
         session_id=session_id,
@@ -251,12 +265,29 @@ async def record_single_traffic(
         response_status=record.get("response_status"),
         response_size_bytes=record.get("response_size_bytes"),
         ip_address_hash=record.get("ip_address_hash"),
+        address_hash=address_hash,
         user_agent=record.get("user_agent", "RPC-Proxy")
     )
-    
+
     db.add(traffic)
     await db.commit()
-    
+    await db.refresh(traffic)
+
+    from sqlalchemy import select, func
+    result = await db.execute(
+        select(func.count()).select_from(NetworkTraffic).where(
+            NetworkTraffic.session_id == session_id
+        )
+    )
+    count = result.scalar()
+
+    result = await db.execute(
+        select(Session).where(Session.id == session_id)
+    )
+    session = result.scalar_one()
+    session.packet_count = count
+    await db.commit()
+
     return {
         "success": True,
         "data": {

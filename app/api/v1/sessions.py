@@ -229,6 +229,87 @@ async def update_session(
     }
 
 
+@router.post("/sessions/complete-all")
+async def complete_all_active_sessions(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Complete all active sessions with correct packet counts
+
+    This endpoint:
+    1. Finds all active sessions
+    2. Counts actual traffic records for each session
+    3. Updates packet_count and status to completed
+    4. Sets end_time
+
+    Args:
+        db: Database session
+
+    Returns:
+        Summary of completed sessions
+    """
+    now = datetime.now(timezone.utc)
+
+    result = await db.execute(
+        select(Session).where(Session.status == SessionStatus.ACTIVE)
+    )
+    active_sessions = result.scalars().all()
+
+    if not active_sessions:
+        return {
+            "success": True,
+            "data": {
+                "message": "No active sessions to complete",
+                "completed_count": 0
+            },
+            "metadata": {
+                "request_id": str(uuid4()),
+                "timestamp": now.isoformat()
+            }
+        }
+
+    completed_count = 0
+    for session in active_sessions:
+        count_result = await db.execute(
+            select(func.count()).select_from(NetworkTraffic).where(
+                NetworkTraffic.session_id == session.id
+            )
+        )
+        actual_packet_count = count_result.scalar()
+
+        session.packet_count = actual_packet_count
+        session.status = SessionStatus.COMPLETED
+        session.end_time = now.isoformat()
+        if session.start_time and isinstance(session.start_time, str):
+            start = datetime.fromisoformat(session.start_time)
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            duration = int((now - start).total_seconds())
+            session.duration_seconds = duration
+
+        completed_count += 1
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "data": {
+            "message": f"Completed {completed_count} active session(s)",
+            "completed_count": completed_count,
+            "sessions": [
+                {
+                    "id": s.id,
+                    "packet_count": s.packet_count
+                } for s in active_sessions
+            ]
+        },
+        "metadata": {
+            "request_id": str(uuid4()),
+            "timestamp": now.isoformat()
+        }
+    }
+
+
 @router.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: str,

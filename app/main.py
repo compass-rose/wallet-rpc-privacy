@@ -40,6 +40,40 @@ async def startup_event():
         await conn.run_sync(Base.metadata.create_all)
 
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Graceful shutdown: complete all active sessions and dispose connections"""
+    from sqlalchemy import select, func
+    from app.models import Session, SessionStatus, NetworkTraffic
+    from app.core.database import async_session_maker
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+
+    try:
+        async with async_session_maker() as db:
+            result = await db.execute(
+                select(Session).where(Session.status == SessionStatus.ACTIVE)
+            )
+            active_sessions = result.scalars().all()
+
+            for session in active_sessions:
+                count_result = await db.execute(
+                    select(func.count()).select_from(NetworkTraffic).where(
+                        NetworkTraffic.session_id == session.id
+                    )
+                )
+                session.packet_count = count_result.scalar()
+                session.status = SessionStatus.COMPLETED
+                session.end_time = now.isoformat()
+
+            await db.commit()
+    except Exception:
+        pass
+
+    await engine.dispose()
+
+
 # Include routers
 app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
 app.include_router(traffic.router, prefix="/api/v1", tags=["traffic"])

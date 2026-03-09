@@ -13,6 +13,7 @@ def get_traffic_provider(provider_type: str = "mock", **kwargs) -> TrafficProvid
     Args:
         provider_type: Type of provider ("mock" or "mitm")
         **kwargs: Additional arguments passed to provider constructor
+                  Only 'count' is passed to MockTrafficProvider
 
     Returns:
         TrafficProvider instance
@@ -34,6 +35,9 @@ def get_traffic_provider(provider_type: str = "mock", **kwargs) -> TrafficProvid
         )
 
     try:
-        return provider_class(**kwargs)
+        if provider_type.lower() == "mock":
+            return provider_class(**kwargs)
+        else:
+            return provider_class()
     except NotImplementedError as e:
         raise RuntimeError(f"Provider {provider_type} not available: {e}")
