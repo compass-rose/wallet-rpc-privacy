@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 # Import routers
-from app.api.v1 import sessions, traffic, leaks, assessments, analytics, rules
+from app.api.v1 import sessions, traffic, leaks, assessments, analytics, rules, dashboard
 from app.models.base import Base
 from app.core.database import engine
 from app.core.config import get_settings
@@ -81,6 +81,7 @@ app.include_router(leaks.router, prefix="/api/v1", tags=["leaks"])
 app.include_router(assessments.router, prefix="/api/v1", tags=["assessments"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 app.include_router(rules.router, prefix="/api/v1", tags=["rules"])
+app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 
 
 # Root endpoint

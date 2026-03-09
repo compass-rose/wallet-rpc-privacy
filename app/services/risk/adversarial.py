@@ -269,19 +269,19 @@ def _generate_recommendations(
     if baseline_effectiveness >= 0.7:
         recommendations.append({
             "type": "high_level",
-            "message": "当前隐私风险较高，强烈建议实施至少一种隐私保护措施",
+            "message": "Current privacy risk is high. Strongly recommend implementing at least one privacy protection measure",
             "priority": "critical"
         })
     elif baseline_effectiveness >= 0.5:
         recommendations.append({
             "type": "high_level",
-            "message": "当前存在中等隐私风险，建议实施隐私保护措施",
+            "message": "Current privacy risk is moderate. Recommend implementing privacy protection measures",
             "priority": "high"
         })
     else:
         recommendations.append({
             "type": "high_level",
-            "message": "当前隐私风险水平可接受，建议持续监控",
+            "message": "Current privacy risk level is acceptable. Continue monitoring",
             "priority": "medium"
         })
 
@@ -507,5 +507,5 @@ def _find_optimal_parameter(effectiveness_data: Dict) -> Dict:
         "parameter_value": optimal_param,
         "expected_effectiveness": effectiveness_data[optimal_param].get("attack_effectiveness", 0),
         "expected_reduction": effectiveness_data[optimal_param].get("reduction_percentage", 0),
-        "recommendation": f"建议使用 {optimal_param} 作为{optimal_param}值"
+        "recommendation": f"Recommend using {optimal_param} as the {optimal_param} value"
     }
