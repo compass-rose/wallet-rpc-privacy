@@ -226,14 +226,6 @@ async def record_single_traffic(
 ):
     """
     Record a single traffic record (for RPC proxy)
-
-    Args:
-        session_id: Session UUID
-        record: Traffic record data (method, endpoint, rpc_method, etc.)
-        db: Database session
-
-    Returns:
-        Success status
     """
     from datetime import datetime, timezone
     from uuid import uuid4
@@ -244,23 +236,44 @@ async def record_single_traffic(
     address_hash = None
     request_body = record.get("request_body")
     rpc_method = record.get("rpc_method")
+
     if request_body and rpc_method:
         try:
             params = json.loads(request_body) if isinstance(request_body, str) else request_body
-            if isinstance(params, list) and len(params) > 0 and isinstance(params[0], str) and params[0].startswith("0x"):
+            if (
+                isinstance(params, list)
+                and len(params) > 0
+                and isinstance(params[0], str)
+                and params[0].startswith("0x")
+            ):
                 address_hash = hashlib.sha256(params[0].encode()).hexdigest()
         except (json.JSONDecodeError, IndexError, KeyError, TypeError):
             pass
+
+    # 这里一定要放到 if 外面
+    request_ts = (
+        datetime.fromisoformat(record["request_timestamp"])
+        if record.get("request_timestamp")
+        else datetime.utcnow()
+    )
+
+    if request_ts.tzinfo is not None:
+        request_ts = request_ts.astimezone(timezone.utc).replace(tzinfo=None)
+
+    # request_body 存进 Text 字段前统一转字符串
+    normalized_request_body = record.get("request_body")
+    if isinstance(normalized_request_body, (dict, list)):
+        normalized_request_body = json.dumps(normalized_request_body, ensure_ascii=False)
 
     traffic = NetworkTraffic(
         id=str(uuid4()),
         session_id=session_id,
         method=record.get("method", "POST"),
         endpoint=record.get("endpoint", ""),
-        request_body=record.get("request_body"),
+        request_body=normalized_request_body,
         rpc_method=record.get("rpc_method"),
         rpc_params_hash=record.get("rpc_params_hash"),
-        request_timestamp=datetime.fromisoformat(record["request_timestamp"]) if record.get("request_timestamp") else datetime.now(timezone.utc),
+        request_timestamp=request_ts,
         response_time_ms=record.get("response_time_ms"),
         response_status=record.get("response_status"),
         response_size_bytes=record.get("response_size_bytes"),
@@ -272,8 +285,14 @@ async def record_single_traffic(
     db.add(traffic)
     await db.commit()
     await db.refresh(traffic)
-
-    from sqlalchemy import select, func
+        # Run leak detection on the new traffic record
+    try:
+        detector = DetectionService()
+        events = await detector.run_detection(session_id, [traffic])
+        if events:
+            await detector.store_events(events, db)
+    except Exception as e:
+        print("Detection failed:", e)
     result = await db.execute(
         select(func.count()).select_from(NetworkTraffic).where(
             NetworkTraffic.session_id == session_id

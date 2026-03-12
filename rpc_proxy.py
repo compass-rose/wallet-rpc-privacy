@@ -12,12 +12,10 @@ RPC Proxy Server - 捕获 MetaMask 流量
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import httpx
-import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Optional
 import json
 import os
-from pathlib import Path
 
 app = FastAPI()
 
@@ -41,18 +39,19 @@ async def get_or_create_session() -> str:
     if CURRENT_SESSION_ID:
         return CURRENT_SESSION_ID
 
-    # 创建新会话
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{PRIVACY_API_URL}/api/v1/sessions",
             json={
                 "wallet_type": "MetaMask",
-                "rpc_provider": REAL_RPC_URL
+                "rpc_provider": REAL_RPC_URL,
             },
-            timeout=10.0
+            timeout=10.0,
         )
         response.raise_for_status()
-        CURRENT_SESSION_ID = response.json()["data"]["id"]
+
+        payload = response.json()
+        CURRENT_SESSION_ID = payload["data"]["id"]
 
     print(f"✓ Created session: {CURRENT_SESSION_ID}")
     return CURRENT_SESSION_ID
@@ -82,83 +81,103 @@ async def proxy_rpc(request: Request):
         request_id = body.get("id")
         timestamp = datetime.now(timezone.utc)
 
-        # 3. 记录到隐私分析系统
-        try:
-            record_data = {
-                "method": "POST",
-                "endpoint": REAL_RPC_URL,
-                "rpc_method": method,
-                "request_body": json.dumps(params),
-                "request_timestamp": timestamp.isoformat(),
-                "ip_address_hash": "127.0.0.1",  # 本地请求
-            }
+        print(f"→ RPC method: {method}, session: {session_id}, request_id: {request_id}")
 
-            # 发送到我们的系统（异步，不阻塞）
-            asyncio.create_task(
-                send_record_to_api(session_id, record_data)
-            )
-        except Exception as e:
-            print(f"⚠ Warning: Failed to record traffic: {e}")
-
-        # 4. 转发到真实 RPC 节点
+        # 3. 转发到真实 RPC 节点
         headers = {
             "Content-Type": "application/json",
             "User-Agent": request.headers.get("User-Agent", "MetaMask"),
         }
 
+        rpc_start = datetime.now(timezone.utc)
+
         rpc_response = await http_client.post(
             REAL_RPC_URL,
             json=body,
-            headers=headers
+            headers=headers,
         )
 
-        # 5. 记录响应信息
-        response_data = {
-            "response_status": rpc_response.status_code,
-            "response_time_ms": 0,  # 实际应该计算
-        }
+        rpc_end = datetime.now(timezone.utc)
+        response_time_ms = int((rpc_end - rpc_start).total_seconds() * 1000)
 
-        # 6. 返回 JSON 响应
+        # 4. 记录到隐私分析系统（直接 await，便于看报错）
+        try:
+            record_data = {
+                "method": "POST",
+                "endpoint": REAL_RPC_URL,
+                "rpc_method": method,
+                "request_body": json.dumps(params, ensure_ascii=False),
+                "request_timestamp": timestamp.isoformat(),
+                "ip_address_hash": "127.0.0.1",
+                "response_status": rpc_response.status_code,
+                "response_time_ms": response_time_ms,
+            }
+
+            await send_record_to_api(session_id, record_data)
+
+        except Exception as e:
+            print(f"⚠ Warning: Failed to record traffic: {e}")
+
+        # 5. 返回 JSON 响应
         if rpc_response.headers.get("content-type", "").startswith("application/json"):
             return JSONResponse(
                 content=rpc_response.json(),
-                status_code=rpc_response.status_code
+                status_code=rpc_response.status_code,
             )
         else:
             return JSONResponse(
-                content=rpc_response.text,
-                status_code=rpc_response.status_code
+                content={"raw_response": rpc_response.text},
+                status_code=rpc_response.status_code,
             )
 
     except json.JSONDecodeError:
         return JSONResponse(
-            content={"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None},
-            status_code=400
+            content={
+                "jsonrpc": "2.0",
+                "error": {"code": -32700, "message": "Parse error"},
+                "id": None,
+            },
+            status_code=400,
         )
     except httpx.HTTPError as e:
         return JSONResponse(
-            content={"jsonrpc": "2.0", "error": {"code": -32603, "message": str(e)}, "id": None},
-            status_code=502
+            content={
+                "jsonrpc": "2.0",
+                "error": {"code": -32603, "message": str(e)},
+                "id": None,
+            },
+            status_code=502,
         )
     except Exception as e:
         print(f"❌ Error: {e}")
         return JSONResponse(
-            content={"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": None},
-            status_code=500
+            content={
+                "jsonrpc": "2.0",
+                "error": {"code": -32603, "message": "Internal error"},
+                "id": None,
+            },
+            status_code=500,
         )
 
 
 async def send_record_to_api(session_id: str, record_data: Dict):
     """异步发送流量记录到分析系统"""
-    try:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"{PRIVACY_API_URL}/api/v1/sessions/{session_id}/traffic/record",
-                json=record_data,
-                timeout=5.0
-            )
-    except Exception as e:
-        print(f"⚠ Failed to send record to API: {e}")
+    url = f"{PRIVACY_API_URL}/api/v1/sessions/{session_id}/traffic/record"
+    print(f"→ Sending traffic record to: {url}")
+    print(f"→ Traffic payload: {json.dumps(record_data, ensure_ascii=False)}")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            url,
+            json=record_data,
+            timeout=10.0,
+        )
+
+        print(f"→ traffic record status: {response.status_code}")
+        print(f"→ traffic record body: {response.text}")
+
+        # 让错误显式抛出，便于排查
+        response.raise_for_status()
 
 
 @app.get("/health")
@@ -168,7 +187,7 @@ async def health():
         "status": "healthy",
         "service": "rpc-proxy",
         "real_rpc": REAL_RPC_URL,
-        "session_id": CURRENT_SESSION_ID
+        "session_id": CURRENT_SESSION_ID,
     }
 
 
